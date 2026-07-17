@@ -15,6 +15,7 @@ export class MemoryStore {
     messages = [];
     resources = [];
     challenges = [];
+    streakShares = [];
     user(id) { return this.users.find(user => user.id === id); }
     therapist(id) { return this.therapists.find(therapist => therapist.id === id); }
     userByEmail(email) { return this.users.find(user => user.email?.toLowerCase() === email.toLowerCase()); }
@@ -25,5 +26,6 @@ export class MemoryStore {
             this.therapists.push({ id: user.id, name: user.name, specialties: [], hourlyRateCents: 0, acceptingClients: false, verified: false });
         return user;
     }
+    latestStreak(userId) { return this.challenges.filter(progress => progress.userId === userId && progress.completed).sort((a, b) => b.date.localeCompare(a.date))[0]?.streak ?? 0; }
 }
 export const makeId = (prefix) => `${prefix}_${crypto.randomUUID()}`;

@@ -7,3 +7,4 @@ export type Conversation = { id: string; kind: ConversationKind; memberIds: stri
 export type Message = { id: string; conversationId: string; senderId: string; body: string; createdAt: Date }
 export type Resource = { id: string; title: string; body: string; authorId: string; publishedAt: Date }
 export type ChallengeProgress = { userId: string; date: string; completed: boolean; streak: number }
+export type StreakShare = { id: string; token: string; userId: string; createdAt: Date; expiresAt: Date; revokedAt?: Date }

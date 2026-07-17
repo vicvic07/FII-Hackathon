@@ -25,6 +25,7 @@ Set a long random `SESSION_SECRET` in `backend/.env`. Then use `POST /auth/regis
 - `POST /v1/guide/match` — safety-aware matching. It does **not** diagnose. Crisis language returns an urgent safety response, and routine messages return verified therapist matches only.
 - `POST /v1/conversations` and `POST /v1/conversations/:id/messages` — peer chat is free; professional chat is pay-as-you-go and charges only the user, based on `elapsedSeconds` and each professional’s personal hourly rate. A 402 is returned if the wallet cannot cover the charge.
 - `GET /v1/peers`, `POST /v1/peer-connections`, and `GET /v1/conversations` — user-to-user peer discovery, private conversation creation (or reuse), and inbox listing. Peer messages use the same message endpoint but are never billed.
+- `POST /v1/streak-shares` — creates an opaque, expiring daily-streak sharing link (default 7 days, max 30). `GET /share/:token` presents a privacy-safe share card; `DELETE /v1/streak-shares/:id` revokes a link.
 - `GET/POST /v1/resources` — POST is professional/admin-only.
 - `GET /v1/exercises` and `POST /v1/challenges/today/complete` — wellness library and daily streak endpoint.
 

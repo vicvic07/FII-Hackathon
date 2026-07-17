@@ -1,4 +1,4 @@
-import type { ChallengeProgress, Conversation, Message, Resource, Therapist, User } from './domain.js'
+import type { ChallengeProgress, Conversation, Message, Resource, StreakShare, Therapist, User } from './domain.js'
 
 /** Replace with Postgres/Prisma in production. Kept isolated so the HTTP layer stays unchanged. */
 export class MemoryStore {
@@ -17,6 +17,7 @@ export class MemoryStore {
   messages: Message[] = []
   resources: Resource[] = []
   challenges: ChallengeProgress[] = []
+  streakShares: StreakShare[] = []
 
   user(id: string) { return this.users.find(user => user.id === id) }
   therapist(id: string) { return this.therapists.find(therapist => therapist.id === id) }
@@ -27,6 +28,7 @@ export class MemoryStore {
     if (input.role === 'PROFESSIONAL') this.therapists.push({ id: user.id, name: user.name, specialties: [], hourlyRateCents: 0, acceptingClients: false, verified: false })
     return user
   }
+  latestStreak(userId: string) { return this.challenges.filter(progress => progress.userId === userId && progress.completed).sort((a, b) => b.date.localeCompare(a.date))[0]?.streak ?? 0 }
 }
 
 export const makeId = (prefix: string) => `${prefix}_${crypto.randomUUID()}`
