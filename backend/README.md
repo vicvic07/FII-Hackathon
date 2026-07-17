@@ -14,13 +14,11 @@ Use `Authorization: Bearer u-alex` for a demo user, or `Bearer p-maya` for a ver
 
 Open `http://localhost:4000` in a browser to use the included API playground. It is served by the API itself and lets you test every available workflow.
 
-## Google OAuth and onboarding
+## Email/password accounts
 
-1. In Google Cloud Console, create an OAuth **Web application** client and add `http://localhost:4000/auth/google/callback` as an authorized redirect URI.
-2. Copy `.env.example` to `.env`, then fill `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and a long random `SESSION_SECRET`.
-3. Open `GET /auth/google` to begin sign-in. The verified Google identity receives an HttpOnly session cookie.
-4. New accounts must call `POST /auth/onboarding` with `{"role":"USER"}` or `{"role":"PROFESSIONAL"}`. A new professional starts unverified and is hidden from the therapist directory until an admin review process approves them.
-5. `GET /auth/session` returns the current session; `POST /auth/logout` clears it.
+Set a long random `SESSION_SECRET` in `backend/.env`. Then use `POST /auth/register` with `name`, `email`, `password`, `age`, `country` (two-letter ISO code), and `role` (`USER` or `PROFESSIONAL`). Passwords require at least 12 characters and are stored only as salted `scrypt` hashes.
+
+`POST /auth/login` establishes a seven-day HttpOnly session cookie. `GET /auth/session` returns the signed-in account and `POST /auth/logout` clears the session. A new professional starts unverified and is hidden from the therapist directory until an admin review process approves them.
 
 ## API surface
 

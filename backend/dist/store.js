@@ -15,17 +15,14 @@ export class MemoryStore {
     messages = [];
     resources = [];
     challenges = [];
-    oauthAccounts = new Map();
     user(id) { return this.users.find(user => user.id === id); }
     therapist(id) { return this.therapists.find(therapist => therapist.id === id); }
-    findOrCreateGoogleUser(input) {
-        const key = `google:${input.subject}`;
-        const existingId = this.oauthAccounts.get(key);
-        if (existingId)
-            return this.user(existingId);
-        const user = { id: makeId('user'), name: input.name, email: input.email, role: null, onboardingComplete: false, walletCents: 0 };
+    userByEmail(email) { return this.users.find(user => user.email?.toLowerCase() === email.toLowerCase()); }
+    createLocalUser(input) {
+        const user = { id: makeId('user'), ...input, role: input.role, onboardingComplete: true, walletCents: 0 };
         this.users.push(user);
-        this.oauthAccounts.set(key, user.id);
+        if (input.role === 'PROFESSIONAL')
+            this.therapists.push({ id: user.id, name: user.name, specialties: [], hourlyRateCents: 0, acceptingClients: false, verified: false });
         return user;
     }
 }
