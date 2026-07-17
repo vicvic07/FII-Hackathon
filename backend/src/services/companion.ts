@@ -19,7 +19,7 @@ export async function companionReply(input: { message: string; mood?: string; hi
   const response = await fetch(`${FIREWORKS_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${process.env.FIREWORKS_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: FIREWORKS_MODEL, temperature: 0.4, max_tokens: 240, messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...history, { role: 'user', content: `${moodContext}\n\n${input.message}`.trim() }] }),
+    body: JSON.stringify({ model: FIREWORKS_MODEL, temperature: 0.4, max_completion_tokens: 512, messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...history, { role: 'user', content: `${moodContext}\n\n${input.message}`.trim() }] }),
   })
   if (!response.ok) throw new Error(`FIREWORKS_${response.status}`)
   const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> }
