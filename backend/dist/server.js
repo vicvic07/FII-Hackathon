@@ -5,14 +5,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { requireAuth, requireRole } from './middleware.js';
-import { matchTherapists } from './services/matching.js';
 import { companionReply } from './services/companion.js';
 import { chargeProfessionalChat } from './services/billing.js';
 import { makeId, MemoryStore } from './store.js';
 import { createSession, hashPassword, verifyPassword } from './services/auth.js';
 const app = express();
 const store = new MemoryStore();
-app.use(cors({ origin: process.env.ALLOWED_ORIGIN?.split(',') ?? true }));
+const allowedOrigins = process.env.ALLOWED_ORIGIN?.split(',').map(origin => origin.trim()).filter(Boolean) ?? ['http://localhost:5500', 'http://127.0.0.1:5500'];
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json({ limit: '32kb' }));
 app.get('/health', (_, res) => res.json({ status: 'ok' }));
 const publicDirectory = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
@@ -55,11 +55,20 @@ app.post('/auth/logout', (_, res) => { res.clearCookie('kindred_session', { http
 const publicUser = (user) => ({ id: user.id, name: user.name, email: user.email, age: user.age, country: user.country, role: user.role, onboardingComplete: user.onboardingComplete, walletCents: user.walletCents });
 app.get('/v1/me', (req, res) => res.json(publicUser(req.actor)));
 app.get('/v1/therapists', (req, res) => res.json(store.therapists.filter(t => !req.query.available || t.acceptingClients)));
-app.post('/v1/guide/match', (req, res) => {
+app.post('/v1/guide/match', async (req, res) => {
     const parsed = z.object({ message: z.string().trim().min(3).max(2000) }).safeParse(req.body);
     if (!parsed.success)
         return res.status(400).json({ error: 'INVALID_MESSAGE' });
-    res.json(matchTherapists(parsed.data.message, store.therapists));
+    try {
+        const result = await companionReply({ message: parsed.data.message, therapists: store.therapists });
+        res.json({ message: result.reply, safety: result.safety, matches: result.matches });
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : 'AI_UNAVAILABLE';
+        if (message === 'AI_NOT_CONFIGURED')
+            return res.status(503).json({ error: message, message: 'Set FIREWORKS_API_KEY in backend/.env, then restart the server.' });
+        return res.status(502).json({ error: 'AI_UNAVAILABLE', message: 'The companion is temporarily unavailable. You can still browse therapist matches.' });
+    }
 });
 app.post('/v1/companion/messages', async (req, res) => {
     const parsed = z.object({ message: z.string().trim().min(1).max(2000), mood: z.enum(['very_sad', 'sad', 'neutral', 'good', 'very_good']).optional(), history: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().max(2000) })).max(8).optional() }).safeParse(req.body);
