@@ -4,7 +4,6 @@ import express from 'express'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
-import { STANDARD_PRO_CHAT_RATE_CENTS_PER_HOUR } from './config.js'
 import type { ConversationKind } from './domain.js'
 import { requireAuth, requireRole } from './middleware.js'
 import { matchTherapists } from './services/matching.js'
@@ -21,8 +20,7 @@ app.use(express.static(publicDirectory))
 app.use(requireAuth(store))
 
 app.get('/v1/me', (req, res) => res.json(req.actor))
-app.get('/v1/pricing', (_, res) => res.json({ professionalChatRateCentsPerHour: STANDARD_PRO_CHAT_RATE_CENTS_PER_HOUR, currency: 'USD' }))
-app.get('/v1/therapists', (req, res) => res.json(store.therapists.filter(t => !req.query.available || t.acceptingClients).map(t => ({ ...t, hourlyRateCents: STANDARD_PRO_CHAT_RATE_CENTS_PER_HOUR }))))
+app.get('/v1/therapists', (req, res) => res.json(store.therapists.filter(t => !req.query.available || t.acceptingClients)))
 
 app.post('/v1/guide/match', (req, res) => {
   const parsed = z.object({ message: z.string().trim().min(3).max(2000) }).safeParse(req.body)
@@ -31,7 +29,7 @@ app.post('/v1/guide/match', (req, res) => {
 })
 
 app.post('/v1/companion/messages', async (req, res) => {
-  const parsed = z.object({ message: z.string().trim().min(1).max(2000), history: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().max(2000) })).max(8).optional() }).safeParse(req.body)
+  const parsed = z.object({ message: z.string().trim().min(1).max(2000), mood: z.enum(['very_sad', 'sad', 'neutral', 'good', 'very_good']).optional(), history: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().max(2000) })).max(8).optional() }).safeParse(req.body)
   if (!parsed.success) return res.status(400).json({ error: 'INVALID_COMPANION_MESSAGE' })
   try { res.json(await companionReply({ ...parsed.data, therapists: store.therapists })) }
   catch (error) {
@@ -67,7 +65,7 @@ app.post('/v1/conversations/:id/messages', (req, res) => {
   let billing = { chargedCents: 0, billedSeconds: conversation.billedSeconds }
   if (conversation.kind === 'PROFESSIONAL' && req.actor!.role === 'USER') {
     const professional = store.user(conversation.professionalId!)!; const profile = store.therapist(professional.id)!
-    try { billing = chargeProfessionalChat({ conversation, payer: req.actor!, professional, hourlyRateCents: STANDARD_PRO_CHAT_RATE_CENTS_PER_HOUR, elapsedSeconds: parsed.data.elapsedSeconds ?? conversation.billedSeconds }) }
+    try { billing = chargeProfessionalChat({ conversation, payer: req.actor!, professional, hourlyRateCents: profile.hourlyRateCents, elapsedSeconds: parsed.data.elapsedSeconds ?? conversation.billedSeconds }) }
     catch { return res.status(402).json({ error: 'INSUFFICIENT_FUNDS', message: 'Add funds to continue this professional chat.' }) }
   }
   const message = { id: makeId('msg'), conversationId: conversation.id, senderId: req.actor!.id, body: parsed.data.body, createdAt: new Date() }
