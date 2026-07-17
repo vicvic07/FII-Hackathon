@@ -48,6 +48,7 @@ app.post('/auth/logout', (_, res) => { res.clearCookie('kindred_session', { http
 const publicUser = (user: import('./domain.js').User) => ({ id: user.id, name: user.name, email: user.email, age: user.age, country: user.country, role: user.role, onboardingComplete: user.onboardingComplete, walletCents: user.walletCents })
 app.get('/v1/me', (req, res) => res.json(publicUser(req.actor!)))
 app.get('/v1/therapists', (req, res) => res.json(store.therapists.filter(t => !req.query.available || t.acceptingClients)))
+app.get('/v1/peers', (req, res) => res.json(store.users.filter(user => user.id !== req.actor!.id && user.role === 'USER' && user.onboardingComplete).map(publicUser)))
 
 app.post('/v1/guide/match', async (req, res) => {
   const parsed = z.object({ message: z.string().trim().min(3).max(2000) }).safeParse(req.body)
@@ -80,9 +81,32 @@ app.post('/v1/conversations', (req, res) => {
   if (!participant || participant.id === req.actor!.id) return res.status(400).json({ error: 'INVALID_PARTICIPANT' })
   const kind = parsed.data.kind as ConversationKind
   if (kind === 'PROFESSIONAL' && participant.role !== 'PROFESSIONAL') return res.status(400).json({ error: 'PROFESSIONAL_REQUIRED' })
-  if (kind === 'PEER' && participant.role !== 'USER') return res.status(400).json({ error: 'PEER_REQUIRED' })
+  if (kind === 'PEER' && (req.actor!.role !== 'USER' || participant.role !== 'USER')) return res.status(400).json({ error: 'PEER_REQUIRED', message: 'Peer chat is available only between user accounts.' })
+  const existing = store.conversations.find(conversation => conversation.kind === kind && conversation.memberIds.includes(req.actor!.id) && conversation.memberIds.includes(participant.id))
+  if (existing) return res.json(existing)
   const conversation = { id: makeId('conv'), kind, memberIds: [req.actor!.id, participant.id], professionalId: kind === 'PROFESSIONAL' ? participant.id : undefined, startedAt: new Date(), billedSeconds: 0 }
   store.conversations.push(conversation); res.status(201).json(conversation)
+})
+
+app.post('/v1/peer-connections', (req, res) => {
+  const parsed = z.object({ peerId: z.string().min(1) }).safeParse(req.body)
+  if (!parsed.success) return res.status(400).json({ error: 'INVALID_PEER' })
+  const peer = store.user(parsed.data.peerId)
+  if (!peer || peer.id === req.actor!.id || req.actor!.role !== 'USER' || peer.role !== 'USER') return res.status(400).json({ error: 'PEER_REQUIRED', message: 'Choose another user account for peer support.' })
+  const existing = store.conversations.find(conversation => conversation.kind === 'PEER' && conversation.memberIds.includes(req.actor!.id) && conversation.memberIds.includes(peer.id))
+  if (existing) return res.json(existing)
+  const conversation = { id: makeId('conv'), kind: 'PEER' as const, memberIds: [req.actor!.id, peer.id], startedAt: new Date(), billedSeconds: 0 }
+  store.conversations.push(conversation); res.status(201).json(conversation)
+})
+
+app.get('/v1/conversations', (req, res) => {
+  const mine = store.conversations.filter(conversation => conversation.memberIds.includes(req.actor!.id)).map(conversation => {
+    const otherId = conversation.memberIds.find(id => id !== req.actor!.id)
+    const other = otherId && store.user(otherId)
+    const latestMessage = store.messages.filter(message => message.conversationId === conversation.id).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0]
+    return { ...conversation, otherParticipant: other && publicUser(other), latestMessage }
+  }).sort((a, b) => (b.latestMessage?.createdAt.getTime() ?? b.startedAt.getTime()) - (a.latestMessage?.createdAt.getTime() ?? a.startedAt.getTime()))
+  res.json(mine)
 })
 
 app.get('/v1/conversations/:id/messages', (req, res) => {
