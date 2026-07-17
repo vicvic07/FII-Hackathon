@@ -10,15 +10,16 @@ const unsafeClinicalAnswer = /\b(you (have|are|probably have)|sounds like you ha
 
 type ChatTurn = { role: 'user' | 'assistant'; content: string }
 
-export async function companionReply(input: { message: string; history?: ChatTurn[]; therapists: Therapist[] }) {
-  const routing = matchTherapists(input.message, input.therapists)
+export async function companionReply(input: { message: string; mood?: string; history?: ChatTurn[]; therapists: Therapist[] }) {
+  const moodContext = input.mood ? `The user selected this current mood: ${input.mood}.` : ''
+  const routing = matchTherapists(`${moodContext} ${input.message}`, input.therapists)
   if (routing.safety === 'URGENT') return { reply: routing.message, safety: routing.safety, matches: [] }
   if (!process.env.FIREWORKS_API_KEY) throw new Error('AI_NOT_CONFIGURED')
   const history = (input.history ?? []).slice(-8).map(turn => ({ role: turn.role, content: turn.content.slice(0, 2000) }))
   const response = await fetch(`${FIREWORKS_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${process.env.FIREWORKS_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: FIREWORKS_MODEL, temperature: 0.4, max_tokens: 240, messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...history, { role: 'user', content: input.message }] }),
+    body: JSON.stringify({ model: FIREWORKS_MODEL, temperature: 0.4, max_tokens: 240, messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...history, { role: 'user', content: `${moodContext}\n\n${input.message}`.trim() }] }),
   })
   if (!response.ok) throw new Error(`FIREWORKS_${response.status}`)
   const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> }

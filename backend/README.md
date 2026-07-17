@@ -17,7 +17,7 @@ Open `http://localhost:4000` in a browser to use the included API playground. It
 ## API surface
 
 - `POST /v1/guide/match` — safety-aware matching. It does **not** diagnose. Crisis language returns an urgent safety response, and routine messages return verified therapist matches only.
-- `POST /v1/conversations` and `POST /v1/conversations/:id/messages` — peer chat is free; professional chat charges only the user, based on `elapsedSeconds` and the pro’s hourly rate. A 402 is returned if the wallet cannot cover the charge.
+- `POST /v1/conversations` and `POST /v1/conversations/:id/messages` — peer chat is free; professional chat is pay-as-you-go and charges only the user, based on `elapsedSeconds` and each professional’s personal hourly rate. A 402 is returned if the wallet cannot cover the charge.
 - `GET/POST /v1/resources` — POST is professional/admin-only.
 - `GET /v1/exercises` and `POST /v1/challenges/today/complete` — wellness library and daily streak endpoint.
 
