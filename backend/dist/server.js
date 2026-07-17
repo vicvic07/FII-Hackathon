@@ -9,6 +9,8 @@ import { matchTherapists } from './services/matching.js';
 import { companionReply } from './services/companion.js';
 import { chargeProfessionalChat } from './services/billing.js';
 import { makeId, MemoryStore } from './store.js';
+import { FRONTEND_URL } from './config.js';
+import { createSession, googleAuthorizationUrl, googleIdentity, newOAuthTransaction } from './services/auth.js';
 const app = express();
 const store = new MemoryStore();
 app.use(cors({ origin: process.env.ALLOWED_ORIGIN?.split(',') ?? true }));
@@ -16,7 +18,49 @@ app.use(express.json({ limit: '32kb' }));
 app.get('/health', (_, res) => res.json({ status: 'ok' }));
 const publicDirectory = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 app.use(express.static(publicDirectory));
+const oauthTransactions = new Map();
+const sessionCookie = (res, token) => res.cookie('kindred_session', token, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 7 * 24 * 60 * 60 * 1000, path: '/' });
+app.get('/auth/google', (_, res) => {
+    try {
+        const tx = newOAuthTransaction();
+        oauthTransactions.set(tx.state, tx);
+        res.redirect(googleAuthorizationUrl(tx));
+    }
+    catch {
+        res.status(503).json({ error: 'GOOGLE_OAUTH_NOT_CONFIGURED', message: 'Set Google OAuth configuration in backend/.env.' });
+    }
+});
+app.get('/auth/google/callback', async (req, res) => {
+    const code = typeof req.query.code === 'string' ? req.query.code : undefined;
+    const state = typeof req.query.state === 'string' ? req.query.state : undefined;
+    const tx = state && oauthTransactions.get(state);
+    if (!code || !tx || tx.expiresAt < Date.now())
+        return res.status(400).send('Invalid or expired sign-in request.');
+    oauthTransactions.delete(tx.state);
+    try {
+        const identity = await googleIdentity(code, tx);
+        const user = store.findOrCreateGoogleUser(identity);
+        sessionCookie(res, createSession(user));
+        res.redirect(`${FRONTEND_URL}?auth=success${user.onboardingComplete ? '' : '&onboarding=required'}`);
+    }
+    catch {
+        res.status(401).send('Google sign-in could not be verified. Please try again.');
+    }
+});
 app.use(requireAuth(store));
+app.get('/auth/session', (req, res) => res.json(req.actor));
+app.post('/auth/onboarding', (req, res) => {
+    const parsed = z.object({ role: z.enum(['USER', 'PROFESSIONAL']) }).safeParse(req.body);
+    if (!parsed.success)
+        return res.status(400).json({ error: 'INVALID_ROLE' });
+    const actor = req.actor;
+    actor.role = parsed.data.role;
+    actor.onboardingComplete = true;
+    if (actor.role === 'PROFESSIONAL' && !store.therapist(actor.id))
+        store.therapists.push({ id: actor.id, name: actor.name, specialties: [], hourlyRateCents: 0, acceptingClients: false, verified: false });
+    res.json(actor);
+});
+app.post('/auth/logout', (_, res) => { res.clearCookie('kindred_session', { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/' }); res.status(204).end(); });
 app.get('/v1/me', (req, res) => res.json(req.actor));
 app.get('/v1/therapists', (req, res) => res.json(store.therapists.filter(t => !req.query.available || t.acceptingClients)));
 app.post('/v1/guide/match', (req, res) => {

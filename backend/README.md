@@ -14,6 +14,14 @@ Use `Authorization: Bearer u-alex` for a demo user, or `Bearer p-maya` for a ver
 
 Open `http://localhost:4000` in a browser to use the included API playground. It is served by the API itself and lets you test every available workflow.
 
+## Google OAuth and onboarding
+
+1. In Google Cloud Console, create an OAuth **Web application** client and add `http://localhost:4000/auth/google/callback` as an authorized redirect URI.
+2. Copy `.env.example` to `.env`, then fill `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and a long random `SESSION_SECRET`.
+3. Open `GET /auth/google` to begin sign-in. The verified Google identity receives an HttpOnly session cookie.
+4. New accounts must call `POST /auth/onboarding` with `{"role":"USER"}` or `{"role":"PROFESSIONAL"}`. A new professional starts unverified and is hidden from the therapist directory until an admin review process approves them.
+5. `GET /auth/session` returns the current session; `POST /auth/logout` clears it.
+
 ## API surface
 
 - `POST /v1/guide/match` — safety-aware matching. It does **not** diagnose. Crisis language returns an urgent safety response, and routine messages return verified therapist matches only.
