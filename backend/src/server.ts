@@ -88,4 +88,14 @@ app.post('/v1/challenges/today/complete', (req, res) => {
 })
 
 app.use((_, res) => res.status(404).json({ error: 'NOT_FOUND' }))
-app.listen(Number(process.env.PORT ?? 4000), () => console.log('Kindred API listening on :4000'))
+
+function listen(port: number, label: string) {
+  const server = app.listen(port, () => console.log(`Kindred API listening on :${port} (${label})`))
+  server.on('error', error => console.warn(`Could not start ${label} listener on :${port}: ${error.message}`))
+}
+
+const port = Number(process.env.PORT ?? 4000)
+// The separately served demo site on :5500 currently targets this API origin.
+const compatibilityPort = Number(process.env.COMPATIBILITY_PORT ?? 4001)
+listen(port, 'primary')
+if (compatibilityPort !== port) listen(compatibilityPort, 'frontend compatibility')

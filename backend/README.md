@@ -10,7 +10,7 @@ npm.cmd install
 npm.cmd run dev
 ```
 
-Use `Authorization: Bearer u-alex` for a demo user, or `Bearer p-maya` for a verified professional. The service runs at `http://localhost:4000`.
+Use `Authorization: Bearer u-alex` for a demo user, or `Bearer p-maya` for a verified professional. The primary service runs at `http://localhost:4000`. It also exposes a compatibility listener on `http://localhost:4001` for the demo site served on port 5500.
 
 Open `http://localhost:4000` in a browser to use the included API playground. It is served by the API itself and lets you test every available workflow.
 
