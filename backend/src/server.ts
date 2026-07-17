@@ -2,6 +2,7 @@ import 'dotenv/config'
 import cors from 'cors'
 import express from 'express'
 import path from 'node:path'
+import { randomBytes } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 import type { ConversationKind } from './domain.js'
@@ -19,6 +20,24 @@ app.use(express.json({ limit: '32kb' }))
 app.get('/health', (_, res) => res.json({ status: 'ok' }))
 const publicDirectory = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public')
 app.use(express.static(publicDirectory))
+
+function publicStreakShare(token: string) {
+  const share = store.streakShares.find(item => item.token === token && !item.revokedAt && item.expiresAt > new Date())
+  const user = share && store.user(share.userId)
+  if (!share || !user) return undefined
+  return { name: user.name, streak: store.latestStreak(user.id), expiresAt: share.expiresAt }
+}
+app.get('/public/streak-shares/:token', (req, res) => {
+  const shared = publicStreakShare(req.params.token)
+  if (!shared) return res.status(404).json({ error: 'STREAK_SHARE_NOT_FOUND' })
+  res.json(shared)
+})
+app.get('/share/:token', (req, res) => {
+  const shared = publicStreakShare(req.params.token)
+  if (!shared) return res.status(404).type('html').send('<h1>This streak link is no longer available.</h1>')
+  const safeName = shared.name.replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]!))
+  res.type('html').send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safeName}'s Kindred streak</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f8f5ee;color:#25483f;font-family:system-ui,sans-serif}.card{max-width:420px;margin:24px;padding:42px;text-align:center;background:white;border-radius:24px;box-shadow:0 12px 40px #23483f18}.brand{color:#df725e;font-size:24px;font-weight:700}.fire{font-size:72px;margin:26px 0 8px}.number{font:600 74px/1 Georgia,serif}.label{font-size:18px;color:#5d716b;margin:10px 0 28px}.note{font-size:13px;color:#87938e}</style></head><body><main class="card"><div class="brand">kindred</div><div class="fire">🔥</div><div class="number">${shared.streak}</div><div class="label">day wellness streak</div><p><b>${safeName}</b> is making space for their wellbeing, one day at a time.</p><p class="note">Shared via Kindred · Link expires ${shared.expiresAt.toLocaleDateString()}</p></main></body></html>`)
+})
 
 const sessionCookie = (res: express.Response, token: string) => res.cookie('kindred_session', token, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 7 * 24 * 60 * 60 * 1000, path: '/' })
 
@@ -47,6 +66,21 @@ app.post('/auth/logout', (_, res) => { res.clearCookie('kindred_session', { http
 
 const publicUser = (user: import('./domain.js').User) => ({ id: user.id, name: user.name, email: user.email, age: user.age, country: user.country, role: user.role, onboardingComplete: user.onboardingComplete, walletCents: user.walletCents })
 app.get('/v1/me', (req, res) => res.json(publicUser(req.actor!)))
+app.post('/v1/streak-shares', (req, res) => {
+  const parsed = z.object({ expiresInDays: z.number().int().min(1).max(30).optional() }).safeParse(req.body ?? {})
+  if (!parsed.success) return res.status(400).json({ error: 'INVALID_EXPIRY' })
+  const expiresInDays = parsed.data.expiresInDays ?? 7
+  const share = { id: makeId('share'), token: randomBytes(24).toString('base64url'), userId: req.actor!.id, createdAt: new Date(), expiresAt: new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000) }
+  store.streakShares.push(share)
+  const origin = `${req.protocol}://${req.get('host')}`
+  res.status(201).json({ id: share.id, url: `${origin}/share/${share.token}`, apiUrl: `${origin}/public/streak-shares/${share.token}`, expiresAt: share.expiresAt, streak: store.latestStreak(req.actor!.id) })
+})
+app.get('/v1/streak-shares', (req, res) => res.json(store.streakShares.filter(share => share.userId === req.actor!.id).map(share => ({ id: share.id, createdAt: share.createdAt, expiresAt: share.expiresAt, revoked: Boolean(share.revokedAt), streak: store.latestStreak(req.actor!.id) }))))
+app.delete('/v1/streak-shares/:id', (req, res) => {
+  const share = store.streakShares.find(item => item.id === req.params.id && item.userId === req.actor!.id)
+  if (!share) return res.status(404).json({ error: 'STREAK_SHARE_NOT_FOUND' })
+  share.revokedAt = new Date(); res.status(204).end()
+})
 app.get('/v1/therapists', (req, res) => res.json(store.therapists.filter(t => !req.query.available || t.acceptingClients)))
 app.get('/v1/peers', (req, res) => res.json(store.users.filter(user => user.id !== req.actor!.id && user.role === 'USER' && user.onboardingComplete).map(publicUser)))
 
